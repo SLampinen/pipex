@@ -11,7 +11,7 @@
 # **************************************************************************** #
 
 NAME = pipex
-SOURCES = pipex.c 
+SOURCES = pipex.c utils.c
 OBJECTS = $(SOURCES:.c=.o)
 
 CFLAGS = -Wall -Werror -Wextra
@@ -20,7 +20,7 @@ all: $(NAME)
 $(NAME): $(OBJECTS) pipex.h
 	$(MAKE) -C libft
 	cp libft/libft.a libft.a
-	cc $(CFLAGS) $(OBJECTS) $(INCLUDE) -o $(NAME) libft.a 
+	cc $(CFLAGS) $(OBJECTS) -o $(NAME) libft.a 
 clean:
 	rm -f $(OBJECTS)
 	$(MAKE) clean -C./libft

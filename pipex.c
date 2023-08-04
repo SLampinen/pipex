@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   pipex.c                                            :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: slampine <marvin@42.fr>                    +#+  +:+       +#+        */
+/*   By: slampine <slampine@student.hive.fi>        +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2023/04/26 10:09:21 by slampine          #+#    #+#             */
-/*   Updated: 2023/04/26 10:09:22 by slampine         ###   ########.fr       */
+/*   Updated: 2023/08/04 14:42:08 by slampine         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -26,104 +26,163 @@ char	*get_path_line(char **env)
 	return (NULL);
 }
 
-char	*get_cmd_path(char **allpaths, char *cmd)
+char	*get_cmd_path(char *path_line, char *cmd)
 {
 	char	*temp;
 	char	*cmd_path;
+	char	**allpaths;
 
-	while (*allpaths)
+	if (ft_strchr(cmd, '/'))
+		return (cmd);
+	else
 	{
-		temp = ft_strjoin(*allpaths, "/");
-		cmd_path = ft_strjoin(temp, cmd);
-		free(temp);
-		if (access(cmd_path, X_OK) == 0)
-			return (cmd_path);
-		free(cmd_path);
-		allpaths++;
+		allpaths = ft_split(path_line, ':');
+		while (*allpaths)
+		{
+			temp = ft_strjoin(*allpaths, "/");
+			cmd_path = ft_strjoin(temp, cmd);
+			free(temp);
+			if (access(cmd_path, X_OK) == 0)
+				return (cmd_path);
+			free(cmd_path);
+			allpaths++;
+		}
 	}
+	ft_printf("command not found: %s\n", cmd);
+	exit (1);
 	return (NULL);
 }
 
 void	first_child(char **src, int *pipe_fd, char **env)
 {
+	int		infile;
 	char	*cmd_path;
 	char	*path_line;
 	char	**cmd_arr;
-	char	**allpaths;
-	int		infile;
 
 	infile = open(src[1], O_RDONLY);
 	if (infile == -1)
 	{
-		perror("");
+		ft_printf("no such file or directory: %s\n", src[1]);
 		exit (1);
 	}
-	usleep(1);
 	cmd_arr = ft_split(src[2], ' ');
-	path_line = get_path_line(env);
-	allpaths = ft_split(path_line, ':');
-	cmd_path = get_cmd_path(allpaths, cmd_arr[0]);
-	if (cmd_path == NULL)
+	if (cmd_arr == NULL)
 	{
 		perror("");
-		exit (1);
+		exit(-1);
 	}
-	dup2(pipe_fd[1], 1);
-	close(pipe_fd[0]);
-	dup2(infile, 0);
+	path_line = get_path_line(env);
+	cmd_path = get_cmd_path(path_line, cmd_arr[0]);
+	dup_n_close(pipe_fd, infile, 0);
 	execve(cmd_path, cmd_arr, env);
 }
-
-void	second_child(char **src, int *pipe_fd, char **env)
-{	
+void	mid_child(char *src, char **env)
+{
+	
 	char	*cmd_path;
 	char	*path_line;
 	char	**cmd_arr;
-	char	**allpaths;
-	int		outfile;
 
-	outfile = open(src[4], O_WRONLY | O_CREAT | O_TRUNC, 0777);
-	if (outfile == -1)
+	cmd_arr = ft_split(src, ' ');
+	if (cmd_arr == NULL)
 	{
-		exit (1);
+		perror("");
+		exit(-1);
 	}
-	cmd_arr = ft_split(src[3], ' ');
 	path_line = get_path_line(env);
-	allpaths = ft_split(path_line, ':');
-	cmd_path = get_cmd_path(allpaths, cmd_arr[0]);
-	if (cmd_path == NULL)
+	cmd_path = get_cmd_path(path_line, cmd_arr[0]);
+	execve(cmd_path, cmd_arr, env);
+}
+void	last_child(int num, char **src, int *pipe_fd, char **env)
+{	
+	int		outfile;
+	char	*cmd_path;
+	char	*path_line;
+	char	**cmd_arr;
+
+	outfile = open(src[num -1], O_WRONLY | O_CREAT | O_TRUNC, 0777);
+	if (outfile == -1)
 	{
 		perror("");
 		exit (1);
 	}
-	dup2(pipe_fd[0], 0);
-	close(pipe_fd[1]);
-	dup2(outfile, 1);
+	cmd_arr = ft_split(src[num - 2], ' ');
+	if (cmd_arr == NULL)
+	{
+		perror("");
+		exit(-1);
+	}
+	path_line = get_path_line(env);
+	cmd_path = get_cmd_path(path_line, cmd_arr[0]);
+	dup_n_close(pipe_fd, outfile, 1);
 	execve(cmd_path, cmd_arr, env);
 }
 
 int	main(int argc, char **argv, char **env)
 {
 	int		pipe_fd[2];
+	int		i;
 	pid_t	pid;
 	pid_t	pid_2;
+	pid_t	pid_3;
 
-	if (argc != 5)
+	if (argc < 5)
 	{
-		ft_printf("Error\n");
+		ft_printf("give input as \"infile cmd1 [optional cmd(s)] cmd(n) outfile\"\n");
 		return (0);
 	}
-	pipe(pipe_fd);
-	pid = fork();
-	if (pid == -1)
-		return (0);
-	if (pid == 0)
-		first_child(argv, pipe_fd, env);
-	pid_2 = fork();
-	if (pid_2 == -1)
-		return (0);
-	if (pid_2 == 0)
-		second_child(argv, pipe_fd, env);
-	ft_printf("All done\n");
+	if (argc == 5)
+	{
+		pipe(pipe_fd);
+		pid = fork();
+		usleep(10);
+		if (pid == -1)
+			perror("Error");
+		if (pid == 0)
+			first_child(argv, pipe_fd, env);
+		pid_2 = fork();
+		usleep(10);
+		if (pid_2 == -1)
+			perror("Error");
+		if (pid_2 == 0)
+			last_child(argc, argv, pipe_fd, env);
+	}
+	if (argc >= 6)
+	{
+		i = 0;
+		while (i < argc)
+		{
+		if (i == 1)
+		{
+			pipe(pipe_fd);
+			pid = fork();
+				usleep(10);
+			if (pid == -1)
+				perror("Error");
+			if (pid == 0)
+				first_child(argv, pipe_fd, env);
+		}
+		if (i >= 3 && i < argc - 2)
+		{
+			pid_2 = fork();
+			usleep(10);
+			if (pid == -1)
+				perror("Error");
+			if (pid == 0)
+				mid_child(argv[i - 1], env);
+		}
+		if (i == argc - 2)
+		{
+			pid_3 = fork();
+			usleep(10);
+			if (pid_3 == -1)
+				perror("Error");
+			if (pid_3 == 0)
+				last_child(argc, argv, pipe_fd, env);
+		}
+		i++;
+		}
+	}
 	return (0);
 }
